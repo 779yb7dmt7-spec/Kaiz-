@@ -47,7 +47,8 @@
       // HARDCODED TAILOR NUMBERS (HIDDEN IN SYSTEM)
       const TAILOR_NUMBERS = {
         'Umma': '918943887325',
-        'Ani Mol': '919995549582'
+        'Ani Mol': '919995549582',
+        'Nusrath': '917510702526'
       };
 
       const initialFormState = {
@@ -260,6 +261,7 @@
 
       const aniMolStitching = orders.filter(o => o.tailorName === 'Ani Mol').reduce((sum, o) => sum + Number(o.stitchingCharge || 0), 0);
       const ummaStitching = orders.filter(o => o.tailorName === 'Umma').reduce((sum, o) => sum + Number(o.stitchingCharge || 0), 0);
+      const nusrathStitching = orders.filter(o => o.tailorName === 'Nusrath').reduce((sum, o) => sum + Number(o.stitchingCharge || 0), 0);
 
       const calculateBrandFinancials = (brandOrders) => {
         let totalProfit = 0;
@@ -447,7 +449,7 @@
 
                 <div className="space-y-2">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">Stitching & Profit Earnings</h3>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <div className="bg-[#1B2A4A] p-3 rounded-xl border border-gray-800">
                       <div className="text-[10px] text-gray-400 font-medium line-clamp-1">Ani Mol Stitching</div>
                       <div className="text-lg font-bold text-[#2ECC71] mt-1">₹{aniMolStitching.toLocaleString()}</div>
@@ -455,6 +457,10 @@
                     <div className="bg-[#1B2A4A] p-3 rounded-xl border border-gray-800">
                       <div className="text-[10px] text-gray-400 font-medium line-clamp-1">Umma Stitching</div>
                       <div className="text-lg font-bold text-[#2ECC71] mt-1">₹{ummaStitching.toLocaleString()}</div>
+                    </div>
+                    <div className="bg-[#1B2A4A] p-3 rounded-xl border border-gray-800">
+                      <div className="text-[10px] text-gray-400 font-medium line-clamp-1">Nusrath Stitching</div>
+                      <div className="text-lg font-bold text-[#2ECC71] mt-1">₹{nusrathStitching.toLocaleString()}</div>
                     </div>
                     <div className="bg-[#1B2A4A] p-3 rounded-xl border border-[#2ECC71]/40 bg-[#2ECC71]/5">
                       <div className="text-[10px] text-gray-300 font-bold line-clamp-1">Anu profit</div>
@@ -543,6 +549,7 @@
                       <select value={formData.tailorName} onChange={(e) => setFormData({ ...formData, tailorName: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white font-semibold w-full">
                         <option value="Ani Mol">Ani Mol</option>
                         <option value="Umma">Umma</option>
+                        <option value="Nusrath">Nusrath</option>
                       </select>
                     </div>
                   </div>
