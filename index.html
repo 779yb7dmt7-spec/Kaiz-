@@ -56,7 +56,6 @@
         customerName: '',
         whatsapp: '',
         address: '',
-        pincode: '',
         dressName: '', deliveryDate: '',
         sellingPrice: '', advanceAmount: '', materialRate: '', stitchingCharge: '', tailorName: 'Ani Mol', shippingCharge: '',
         isAdvPaid: false,
@@ -108,8 +107,7 @@
           setFormData(prev => ({
             ...prev,
             customerName: existingOrder.customerName,
-            address: existingOrder.address,
-            pincode: existingOrder.pincode
+            address: existingOrder.address
           }));
         }
       };
@@ -236,7 +234,7 @@
 
         reportData.forEach(o => {
           const bal = o.isFullyPaid ? 0 : (Number(o.sellingPrice || 0) - Number(o.advanceAmount || 0));
-          csvContent += `"${o.brand}","${o.customerName}","${o.whatsapp}",${o.dressName}",${o.sellingPrice},${o.advanceAmount},${bal},"${o.isFullyPaid ? 'YES' : 'NO'}","${o.deliveryDate}","${o.tailorName}"\n`;
+          csvContent += `"${o.brand}","${o.customerName}","${o.whatsapp}","${o.dressName}",${o.sellingPrice},${o.advanceAmount},${bal},"${o.isFullyPaid ? 'YES' : 'NO'}","${o.deliveryDate}","${o.tailorName}"\n`;
         });
 
         const encodedUri = encodeURI(csvContent);
@@ -373,7 +371,7 @@
                     <button onClick={() => { setView('reports'); setIsSidebarOpen(false); }} className="text-left p-2 hover:bg-[#0D1B2A] hover:text-[#2ECC71] rounded-lg transition">📥 Reports & Downloads</button>
                   </nav>
                 </div>
-                <div className="text-[10px] text-gray-500">KAIZ SOOQ v3.5 - Secured Executive System</div>
+                <div className="text-[10px] text-gray-500">KAIZ SOOQ v3.6 - Secured Executive System</div>
               </div>
               <div className="flex-1" onClick={() => setIsSidebarOpen(false)}></div>
             </div>
@@ -522,7 +520,6 @@
                   <input type="text" placeholder="Customer Name" value={formData.customerName} onChange={(e) => setFormData({ ...formData, customerName: e.target.value })} required className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none" />
                   <input type="text" placeholder="WhatsApp Number (e.g. 9876543210)" value={formData.whatsapp} onChange={(e) => handleWhatsappChange(e.target.value)} required className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none" />
                   <textarea placeholder="Shipping Address" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none h-16"></textarea>
-                  <input type="text" placeholder="Pincode" value={formData.pincode} onChange={(e) => setFormData({ ...formData, pincode: e.target.value })} className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none" />
                 </div>
 
                 <div className="space-y-2">
