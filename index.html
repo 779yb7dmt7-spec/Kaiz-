@@ -44,6 +44,12 @@
       const [fromDate, setFromDate] = useState('');
       const [toDate, setToDate] = useState('');
 
+      // HARDCODED TAILOR NUMBERS (HIDDEN IN SYSTEM)
+      const TAILOR_NUMBERS = {
+        'Umma': '918943887325',
+        'Ani Mol': '919995549582'
+      };
+
       const initialFormState = {
         brand: 'Ledi',
         customerName: '',
@@ -52,7 +58,7 @@
         address: '',
         pincode: '',
         dressName: '', deliveryDate: '',
-        sellingPrice: '', advanceAmount: '', materialRate: '', stitchingCharge: '', tailorName: 'Ani Mol', tailorPhone: '', shippingCharge: '',
+        sellingPrice: '', advanceAmount: '', materialRate: '', stitchingCharge: '', tailorName: 'Ani Mol', shippingCharge: '',
         isAdvPaid: false,
         isFullyPaid: false,
         isTailorNotified: false
@@ -186,27 +192,21 @@
 
       // TAILOR WHATSAPP MESSAGE FUNCTION
       const triggerTailorWhatsApp = (order) => {
-        const tailorPhone = order.tailorPhone || '';
+        const tailorName = order.tailorName || 'Ani Mol';
         const stitchingCharge = order.stitchingCharge || 0;
         
-        const msg = `Hello ${order.tailorName || 'Tailor'},\n\nThank you so much for your excellent work on *${order.dressName}*! The stitching was outstanding and awesome.\n\nYour stitching charge of *₹${stitchingCharge}* has been credited to your account.\n\nBest regards,\n*KAIZ SOOQ*`;
+        // GET NUMBER FROM HIDDEN DICTIONARY BASED ON SELECTED TAILOR
+        const targetNumber = TAILOR_NUMBERS[tailorName] || TAILOR_NUMBERS['Ani Mol'];
+        
+        const msg = `Hello ${tailorName},\n\nThank you so much for your excellent work on *${order.dressName}*! The stitching was outstanding and awesome.\n\nYour stitching charge of *₹${stitchingCharge}* has been credited to your account.\n\nBest regards,\n*KAIZ SOOQ*`;
 
-        const markTailorAsNotified = () => {
-          const updated = orders.map(o => o.id === order.id ? { ...o, isTailorNotified: true } : o);
-          saveOrdersToStorage(updated);
-          setSelectedOrderDetails(prev => prev ? { ...prev, isTailorNotified: true } : null);
-        };
+        // Update Tailor Notified status
+        const updated = orders.map(o => o.id === order.id ? { ...o, isTailorNotified: true } : o);
+        saveOrdersToStorage(updated);
+        setSelectedOrderDetails(prev => prev ? { ...prev, isTailorNotified: true } : null);
 
-        if (!tailorPhone) {
-          const manualPhone = prompt(`Please enter WhatsApp Number for ${order.tailorName}:`);
-          if (manualPhone) {
-            markTailorAsNotified();
-            window.open(`https://wa.me/91${manualPhone}?text=${encodeURIComponent(msg)}`, '_blank');
-          }
-        } else {
-          markTailorAsNotified();
-          window.open(`https://wa.me/91${tailorPhone}?text=${encodeURIComponent(msg)}`, '_blank');
-        }
+        // Directly open WhatsApp with selected tailor's number
+        window.open(`https://wa.me/${targetNumber}?text=${encodeURIComponent(msg)}`, '_blank');
       };
 
       const downloadReport = () => {
@@ -547,11 +547,6 @@
                     </div>
                   </div>
 
-                  <div>
-                    <label className="text-[10px] text-gray-400 font-bold">Tailor WhatsApp Number</label>
-                    <input type="text" placeholder="Tailor WhatsApp Number" value={formData.tailorPhone || ''} onChange={(e) => setFormData({ ...formData, tailorPhone: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white w-full" />
-                  </div>
-
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-[10px] text-gray-400 font-bold">Material Cost (₹)</label>
@@ -744,7 +739,7 @@
                           onClick={() => triggerTailorWhatsApp(selectedOrderDetails)} 
                           className="w-full bg-[#0D1B2A] hover:bg-[#2ECC71] hover:text-black text-[#2ECC71] border border-[#2ECC71]/40 font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 transition shadow-lg"
                         >
-                          🧵 Msg Tailor ({selectedOrderDetails.tailorName || 'Tailor'})
+                          🧵 Msg Tailor ({selectedOrderDetails.tailorName || 'Ani Mol'})
                         </button>
                       )}
 
