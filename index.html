@@ -201,14 +201,15 @@
         window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
       };
 
-      // TAILOR WHATSAPP MESSAGE FUNCTION
+      // TAILOR WHATSAPP MESSAGE FUNCTION (UPDATED WITH CUSTOMER NAME)
       const triggerTailorWhatsApp = (order) => {
         const tailorName = order.tailorName || 'Ani Mol';
         const stitchingCharge = order.stitchingCharge || 0;
+        const customerName = order.customerName || 'Customer';
         
         const targetNumber = TAILOR_NUMBERS[tailorName] || TAILOR_NUMBERS['Ani Mol'];
         
-        const msg = `Hello ${tailorName},\n\nThank you so much for your excellent work on *${order.dressName}*! The stitching was outstanding and awesome.\n\nYour stitching charge of *₹${stitchingCharge}* has been credited to your account.\n\nBest regards,\n*KAIZ SOOQ*`;
+        const msg = `Hello ${tailorName},\n\nThank you so much for your excellent work on *${order.dressName}* (Customer: *${customerName}*)! The stitching was outstanding and awesome.\n\nYour stitching charge of *₹${stitchingCharge}* has been credited to your account.\n\nBest regards,\n*KAIZ SOOQ*`;
 
         const updated = orders.map(o => o.id === order.id ? { ...o, isTailorNotified: true } : o);
         saveOrdersToStorage(updated);
@@ -748,7 +749,7 @@
                         </div>
                       </div>
 
-                      {/* TAILOR MESSAGE BUTTON */}
+                      {/* TAILOR MESSAGE BUTTON (WITH CUSTOMER NAME) */}
                       {!selectedOrderDetails.isTailorNotified && (
                         <button 
                           onClick={() => triggerTailorWhatsApp(selectedOrderDetails)} 
