@@ -3,147 +3,150 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KAIZ SOOQ - Executive Dashboard</title>
+  <title>KAIZ SOOQ - Live Realtime Dashboard</title>
+  
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  
   <!-- React & React DOM -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  
   <!-- Babel -->
-  <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- Supabase JS Client for Realtime Global Data Sync -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 </head>
 <body class="bg-[#0D1B2A] text-[#E2E8F0] font-sans antialiased pb-24 selection:bg-[#2ECC71] selection:text-black">
 
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
+    const { useState, useEffect } = React;
 
-    // Supabase Configuration for Shared Realtime Sync
-    const SUPABASE_URL = 'https://YOUR_SUPABASE_URL.supabase.co';
-    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
-    const supabaseClient = (SUPABASE_URL && SUPABASE_URL !== 'https://YOUR_SUPABASE_URL.supabase.co') 
-      ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) 
-      : null;
+    // -------------------------------------------------------------------
+    // FIREBASE CONFIGURATION (നിങ്ങളുടെ Firebase Config ഇവിടെ നൽകുക)
+    // -------------------------------------------------------------------
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    // Firebase Initialize ചെയ്യുക
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.database();
 
     function KaizSooqApp() {
       const [view, setView] = useState('dashboard');
       const [isSidebarOpen, setIsSidebarOpen] = useState(false);
       const [brandFilter, setBrandFilter] = useState('All');
       const [orders, setOrders] = useState([]);
-      const [items, setItems] = useState([]);
+      const [activityLogs, setActivityLogs] = useState([]);
       const [editingOrderId, setEditingOrderId] = useState(null);
-      const [expandedCustomerId, setExpandedCustomerId] = useState(null);
+      const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
 
-      // Tailor WhatsApp Clicked Order State (Tracks orders where tailor button was clicked to show only customer name initially)
-      const [sentTailorOrders, setSentTailorOrders] = useState({});
+      // Search & Filter State
+      const [searchQuery, setSearchQuery] = useState('');
+      const [statusFilter, setStatusFilter] = useState('All');
 
       // Auth State
       const [isLoggedIn, setIsLoggedIn] = useState(false);
       const [loginUser, setLoginUser] = useState('');
       const [loginPass, setLoginPass] = useState('');
       const [showLoginModal, setShowLoginModal] = useState(false);
+      const [showLogsModal, setShowLogsModal] = useState(false);
 
       // Report Dates
       const [fromDate, setFromDate] = useState('');
       const [toDate, setToDate] = useState('');
 
-      const chartRef = useRef(null);
-      const chartInstance = useRef(null);
+      const TAILOR_NUMBERS = {
+        'Umma': '918943887325',
+        'Ani Mol': '919995549582',
+        'Nusrath': '917510702526'
+      };
 
       const initialFormState = {
         brand: 'Ledi',
         customerName: '',
         whatsapp: '',
-        sellingPrice: '',
-        advanceAmount: '',
-        materialRate: '',
-        stitchingCharge: '',
-        shippingCharge: '',
-        tailorName: 'Ani Mol',
         address: '',
-        pincode: '',
-        courier: 'DTDC',
-        trackingNo: '',
-        dressName: '',
-        age: '',
-        isStandardMeasurement: false,
-        dressLength: '', bust: '', waist: '', hip: '', shoulder: '', sleeveLength: '', neck: '', armhole: '',
-        deliveryDate: '',
+        dressName: '', deliveryDate: '',
+        sellingPrice: '', advanceAmount: '', materialRate: '', stitchingCharge: '', tailorName: 'Ani Mol', shippingCharge: '',
         isAdvPaid: false,
-        isFullyPaid: false
+        isFullyPaid: false,
+        isTailorNotified: false
       };
 
       const [formData, setFormData] = useState(initialFormState);
-      
-      const initialItemState = { 
-        name: '', materialName: '', modelName: '', designName: '', category: 'Fabric', brand: 'Ledi', stock: '', price: '', photoUrl: '' 
-      };
-      const [itemForm, setItemForm] = useState(initialItemState);
 
-      // Fetch Initial Data & Setup Supabase Realtime / LocalStorage Fallback
+      // -------------------------------------------------------------------
+      // REALTIME DATABASE SYNC (എല്ലാവരുടെയും സ്ക്രീനിൽ തത്സമയം മാറാൻ)
+      // -------------------------------------------------------------------
       useEffect(() => {
-        const fetchInitialData = async () => {
-          if (supabaseClient) {
-            try {
-              const { data: ordData } = await supabaseClient.from('kaiz_orders').select('*').order('id', { ascending: false });
-              if (ordData && ordData.length > 0) setOrders(ordData);
-
-              const { data: itemData } = await supabaseClient.from('kaiz_items').select('*').order('id', { ascending: false });
-              if (itemData && itemData.length > 0) setItems(itemData);
-            } catch (err) {
-              console.log('Supabase fetch fallback to local storage', err);
-            }
+        // Orders Live Sync
+        const ordersRef = db.ref('orders');
+        ordersRef.on('value', (snapshot) => {
+          const data = snapshot.val();
+          if (data) {
+            const loadedOrders = Object.keys(data).map(key => ({
+              ...data[key],
+              id: key
+            }));
+            setOrders(loadedOrders.reverse());
+          } else {
+            setOrders([]);
           }
+        });
 
-          // Fallback or Initial Load from localStorage if Supabase is unconfigured
-          const saved = localStorage.getItem('kaiz_orders');
-          if (saved && (!orders.length)) setOrders(JSON.parse(saved));
-          const savedItems = localStorage.getItem('kaiz_items');
-          if (savedItems && (!items.length)) setItems(JSON.parse(savedItems));
-          const savedTailorClicks = localStorage.getItem('kaiz_sent_tailor');
-          if (savedTailorClicks) setSentTailorOrders(JSON.parse(savedTailorClicks));
+        // Logs Live Sync
+        const logsRef = db.ref('logs');
+        logsRef.on('value', (snapshot) => {
+          const data = snapshot.val();
+          if (data) {
+            const loadedLogs = Object.keys(data).map(key => ({
+              ...data[key],
+              id: key
+            }));
+            setActivityLogs(loadedLogs.reverse());
+          } else {
+            setActivityLogs([]);
+          }
+        });
+
+        return () => {
+          ordersRef.off();
+          logsRef.off();
         };
-
-        fetchInitialData();
-
-        // Setup Realtime Subscription if Supabase is configured
-        if (supabaseClient) {
-          const orderSubscription = supabaseClient
-            .channel('public:kaiz_orders')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'kaiz_orders' }, payload => {
-              // Refresh orders on any remote modification
-              supabaseClient.from('kaiz_orders').select('*').order('id', { ascending: false }).then(({ data }) => {
-                if (data) setOrders(data);
-              });
-            })
-            .subscribe();
-
-          const itemSubscription = supabaseClient
-            .channel('public:kaiz_items')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'kaiz_items' }, payload => {
-              supabaseClient.from('kaiz_items').select('*').order('id', { ascending: false }).then(({ data }) => {
-                if (data) setItems(data);
-              });
-            })
-            .subscribe();
-
-          return () => {
-            supabaseClient.removeChannel(orderSubscription);
-            supabaseClient.removeChannel(itemSubscription);
-          };
-        }
       }, []);
+
+      const addLog = (title, details, type = 'info') => {
+        const now = new Date();
+        const timeString = now.toLocaleDateString() + ' ' + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const newLog = {
+          time: timeString,
+          title,
+          details,
+          type
+        };
+        db.ref('logs').push(newLog);
+      };
 
       const handleLogin = (e) => {
         e.preventDefault();
         if (loginUser === 'kaiz sooq' && loginPass === 'kaiz2024') {
           setIsLoggedIn(true);
           setShowLoginModal(false);
+          addLog("Owner Login Successful", "Owner accessed admin mode", "success");
           alert('Owner Login Successful!');
         } else {
           alert('Invalid Username or Password!');
@@ -158,133 +161,23 @@
         }
       };
 
-      const saveOrdersToStorage = async (updatedOrders) => {
-        setOrders(updatedOrders);
-        localStorage.setItem('kaiz_orders', JSON.stringify(updatedOrders));
-        if (supabaseClient) {
-          // Sync with Supabase table if configured
-          try {
-            // Clear and bulk insert or upsert individual
-            for (let ord of updatedOrders) {
-              await supabaseClient.from('kaiz_orders').upsert([ord]);
-            }
-          } catch (e) {
-            console.error('Supabase orders sync error:', e);
-          }
-        }
-      };
-
-      const saveItemsToStorage = async (updatedItems) => {
-        setItems(updatedItems);
-        localStorage.setItem('kaiz_items', JSON.stringify(updatedItems));
-        if (supabaseClient) {
-          try {
-            for (let itm of updatedItems) {
-              await supabaseClient.from('kaiz_items').upsert([itm]);
-            }
-          } catch (e) {
-            console.error('Supabase items sync error:', e);
-          }
-        }
-      };
-
-      const handleWhatsappChange = (waNum) => {
-        setFormData(prev => ({ ...prev, whatsapp: waNum }));
-        const existingOrder = orders.find(o => o.whatsapp === waNum);
-        if (existingOrder && !editingOrderId) {
-          setFormData(prev => ({
-            ...prev,
-            customerName: existingOrder.customerName,
-            address: existingOrder.address,
-            pincode: existingOrder.pincode
-          }));
-        }
-      };
-
-      const handleSellingPriceChange = (val) => {
-        const sp = Number(val) || 0;
-        const autoAdv = sp > 0 ? (sp * 0.5) : '';
-        setFormData(prev => ({
-          ...prev,
-          sellingPrice: val,
-          advanceAmount: autoAdv
-        }));
-      };
-
-      const handleItemSelect = (itemName) => {
-        const selected = items.find(i => i.name === itemName);
-        if (selected) {
-          const sp = Number(selected.price || 0);
-          setFormData(prev => ({
-            ...prev,
-            dressName: selected.name,
-            sellingPrice: selected.price,
-            advanceAmount: sp > 0 ? (sp * 0.5) : prev.advanceAmount,
-            brand: selected.brand || prev.brand
-          }));
-        } else {
-          setFormData(prev => ({ ...prev, dressName: itemName }));
-        }
-      };
-
-      const handleImageUpload = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            setItemForm(prev => ({ ...prev, photoUrl: reader.result }));
-          };
-          reader.readAsDataURL(file);
-        }
-      };
-
-      const handleItemSubmit = (e) => {
-        e.preventDefault();
-        checkAuthAndAction(() => {
-          if (!itemForm.name || !itemForm.price) {
-            alert('Please enter Item Name and Price');
-            return;
-          }
-          const updated = [{ ...itemForm, id: Date.now() }, ...items];
-          saveItemsToStorage(updated);
-          setItemForm(initialItemState);
-          alert('Item Registered Successfully & Synced to Link Viewers!');
-        });
-      };
-
-      const handleDeleteItem = async (id) => {
-        checkAuthAndAction(async () => {
-          if (confirm('Are you sure you want to delete this item?')) {
-            const updated = items.filter(item => item.id !== id);
-            saveItemsToStorage(updated);
-            if (supabaseClient) {
-              await supabaseClient.from('kaiz_items').delete().eq('id', id);
-            }
-          }
-        });
-      };
-
-      const handleShareItem = (item) => {
-        let msg = `✨ *${item.brand || 'KAIZ SOOQ'} New Arrival* ✨\n\n👗 *Item:* ${item.name}\n💰 *Price:* ₹${item.price}\n\n`;
-        if (item.photoUrl) {
-          msg += `🖼️ *Photo Link:* ${item.photoUrl}\n\n`;
-        }
-        msg += `_Contact KAIZ SOOQ to book your order now!_`;
-        window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
-      };
-
       const handleOrderSubmit = (e) => {
         e.preventDefault();
         checkAuthAndAction(() => {
+          const sp = Number(formData.sellingPrice) || 0;
+          const exp = (Number(formData.materialRate) || 0) + (Number(formData.stitchingCharge) || 0) + (Number(formData.shippingCharge) || 0);
+          const profit = sp - exp;
+
           if (editingOrderId) {
-            const updated = orders.map(o => o.id === editingOrderId ? { ...formData, id: editingOrderId } : o);
-            saveOrdersToStorage(updated);
-            alert('Order Updated & Synced to All Link Viewers!');
+            db.ref(`orders/${editingOrderId}`).update(formData);
+            addLog("Order Updated ✏️", `Customer: ${formData.customerName} | Profit: ₹${profit}`, "warning");
+            alert('Order Updated Successfully Live!');
             setEditingOrderId(null);
           } else {
-            const newOrder = { ...formData, id: Date.now() };
-            saveOrdersToStorage([newOrder, ...orders]);
-            alert('Order Saved & Synced to All Link Viewers!');
+            const newRef = db.ref('orders').push();
+            newRef.set(formData);
+            addLog("New Order Created 🆕", `Customer: ${formData.customerName} (${formData.brand}) | Revenue: ₹${sp} | Profit: ₹${profit}`, "success");
+            alert('New Order Saved Live!');
           }
           setFormData(initialFormState);
           setView('savedOrders');
@@ -295,182 +188,128 @@
         checkAuthAndAction(() => {
           setFormData(order);
           setEditingOrderId(order.id);
+          setSelectedOrderDetails(null);
           setView('addOrder');
         });
       };
 
-      const handleDeleteOrder = async (id) => {
-        checkAuthAndAction(async () => {
-          if (confirm('Are you sure you want to delete this order?')) {
-            const updated = orders.filter(o => o.id !== id);
-            saveOrdersToStorage(updated);
-            if (supabaseClient) {
-              await supabaseClient.from('kaiz_orders').delete().eq('id', id);
+      const handleDeleteOrder = (id) => {
+        checkAuthAndAction(() => {
+          const target = orders.find(o => o.id === id);
+          if (confirm('Are you sure you want to delete this order live?')) {
+            db.ref(`orders/${id}`).remove();
+            if (target) {
+              addLog("Order Deleted 🗑️", `Removed Order: ${target.customerName} (${target.dressName})`, "danger");
+            }
+            if (selectedOrderDetails && selectedOrderDetails.id === id) {
+              setSelectedOrderDetails(null);
             }
           }
         });
       };
 
-      // Tailor WhatsApp Dispatch with custom requested format & collapsing state
-      const sendTailorWhatsApp = (tailorPhone, tailorName, order) => {
-        const updatedClicks = { ...sentTailorOrders, [order.id]: true };
-        setSentTailorOrders(updatedClicks);
-        localStorage.setItem('kaiz_sent_tailor', JSON.stringify(updatedClicks));
-
-        const msg = `Hello ${tailorName}, Thank you so much for your wonderful work! Your salary for this completed order has been credited. 🫂\n\nCredited amount 💸\nCustomer: ${order.customerName}\nDress: ${order.dressName}\nStitching: ₹${order.stitchingCharge || 0}\n\n*KAIZ SOOQ*`;
-        window.open(`https://wa.me/91${tailorPhone}?text=${encodeURIComponent(msg)}`, '_blank');
-      };
-
       const triggerWhatsApp = (type, order) => {
-        const balance = order.isFullyPaid ? 0 : (Number(order.sellingPrice || 0) - Number(order.advanceAmount || 0));
-        const brandHeader = order.brand;
-        let msg = '';
-
-        if (type === 'adv') {
-          msg = `*${brandHeader} Order Confirmed!*\nHello ${order.customerName},\nYour order for *${order.dressName}* is confirmed.\n\n👗 *Dress Price:* ₹${order.sellingPrice || 0}\n💳 *Advance Paid:* ₹${order.advanceAmount || 0}\n💵 *Remaining Balance:* ₹${balance}\n📅 *Expected Delivery:* ${order.deliveryDate || 'N/A'}`;
-          const updated = orders.map(o => o.id === order.id ? { ...o, isAdvPaid: true } : o);
-          saveOrdersToStorage(updated);
-
-        } else if (type === 'remind') {
-          msg = `*${brandHeader} Payment Reminder*\nHello ${order.customerName},\nThis is a reminder for your order: *${order.dressName}*\n\n👗 *Dress Price:* ₹${order.sellingPrice || 0}\n💳 *Advance Paid:* ₹${order.advanceAmount || 0}\n💵 *Pending Balance:* ₹${balance}\n\nPlease pay the remaining balance via GPay/PhonePe to:\n*Muhammedanas3010-1@oksbi*`;
-        } else if (type === 'full') {
-          msg = `*${brandHeader} Payment Confirmation*\nThank you ${order.customerName}.\nYour payment for *${order.dressName}* has been received in full.\n\n👗 *Dress Price:* ₹${order.sellingPrice || 0}\n✅ *Total Paid:* ₹${order.sellingPrice || 0}`;
-          const updated = orders.map(o => o.id === order.id ? { ...o, isFullyPaid: true, advanceAmount: order.sellingPrice } : o);
-          saveOrdersToStorage(updated);
-        }
-
-        msg += order.brand === 'Bebi' ? `\n\n*KAIZ SOOQ - be every baby’s ideal*` : `\n\n*KAIZ SOOQ*`;
-
-        const targetPhone = order.whatsapp;
-        window.open(`https://wa.me/91${targetPhone}?text=${encodeURIComponent(msg)}`, '_blank');
-      };
-
-      const sendDirectWhatsAppToClient = (phone, name) => {
-        const msg = `Hello ${name},\nGreetings from *KAIZ SOOQ*! How can we help you today?`;
-        window.open(`https://wa.me/91${phone}?text=${encodeURIComponent(msg)}`, '_blank');
-      };
-
-      const downloadReport = () => {
-        let reportData = [...orders];
-
-        if (fromDate && toDate) {
-          reportData = reportData.filter(o => o.deliveryDate >= fromDate && o.deliveryDate <= toDate);
-        }
-
-        if (reportData.length === 0) {
-          alert('No orders found for the selected criteria!');
+        const rawTargetPhone = order.whatsapp || '';
+        if (!rawTargetPhone) {
+          alert('WhatsApp number not found!');
           return;
         }
 
-        let csvContent = "data:text/csv;charset=utf-8,";
-        csvContent += "Brand,Customer Name,WhatsApp,Dress Name,Price,Advance,Balance,Fully Paid,Delivery Date,Tailor\n";
+        let cleanPhone = rawTargetPhone.replace(/[^0-9]/g, '');
+        if (cleanPhone.length === 10) cleanPhone = '91' + cleanPhone;
 
-        reportData.forEach(o => {
-          const bal = o.isFullyPaid ? 0 : (Number(o.sellingPrice || 0) - Number(o.advanceAmount || 0));
-          csvContent += `"${o.brand}","${o.customerName}","${o.whatsapp}","${o.dressName}",${o.sellingPrice},${o.advanceAmount},${bal},"${o.isFullyPaid ? 'YES' : 'NO'}","${o.deliveryDate}","${o.tailorName}"\n`;
-        });
+        const balance = order.isFullyPaid ? 0 : (Number(order.sellingPrice || 0) - Number(order.advanceAmount || 0));
+        const brandHeader = order.brand === 'Bebi' ? 'BEBI WEAR' : 'LEDI WEAR';
+        let msg = '';
 
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `KAIZ_SOOQ_Report_${fromDate || 'All'}_to_${toDate || 'All'}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        if (type === 'adv') {
+          msg = `*${brandHeader} - Order Confirmed! 🎉*\n\nHello *${order.customerName}*,\nYour order for *${order.dressName}* has been confirmed.\n\n👗 *Price:* ₹${order.sellingPrice || 0}\n💳 *Advance:* ₹${order.advanceAmount || 0}\n💵 *Balance:* ₹${balance}\n📅 *Delivery:* ${order.deliveryDate}`;
+          db.ref(`orders/${order.id}`).update({ isAdvPaid: true });
+          addLog("Advance Info Sent 💳", `Advance Message sent to ${order.customerName}`, "info");
+
+        } else if (type === 'remind') {
+          msg = `*${brandHeader} - Payment Reminder 🔔*\n\nHello *${order.customerName}*,\nPayment reminder for *${order.dressName}*.\n\n💵 *Pending Balance:* ₹${balance}\n\nGPay/PhonePe:\n👉 *Muhammedanas3010-1@oksbi*`;
+          addLog("Payment Reminder Sent 🔔", `Reminder sent to ${order.customerName} for Balance ₹${balance}`, "warning");
+
+        } else if (type === 'full') {
+          msg = `*${brandHeader} - Payment Received! ✅*\n\nHello *${order.customerName}*,\nPayment received for *${order.dressName}*.\n\n👗 *Amount:* ₹${order.sellingPrice || 0}\n✅ *Status:* Fully Paid`;
+          db.ref(`orders/${order.id}`).update({ isFullyPaid: true, advanceAmount: order.sellingPrice });
+          addLog("Order Completed ✅", `Full Payment Received from ${order.customerName} (Revenue: ₹${order.sellingPrice})`, "success");
+        }
+
+        msg += order.brand === 'Bebi' ? `\n\n*KAIZ SOOQ - Be Every Baby’s Ideal*` : `\n\n*KAIZ SOOQ*`;
+        window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
       };
 
-      const filteredOrders = brandFilter === 'All' ? orders : orders.filter(o => o.brand === brandFilter);
-      const lediOrders = orders.filter(o => o.brand === 'Ledi');
-      const bebiOrders = orders.filter(o => o.brand === 'Bebi');
+      const triggerTailorWhatsApp = (order) => {
+        const tailorName = order.tailorName || 'Ani Mol';
+        const stitchingCharge = order.stitchingCharge || 0;
+        const targetNumber = TAILOR_NUMBERS[tailorName] || TAILOR_NUMBERS['Ani Mol'];
+        
+        const msg = `Hello ${tailorName},\n\nWork completed for *${order.dressName}* (Customer: *${order.customerName}*).\n\nStitching charge of *₹${stitchingCharge}* credited.\n\nBest regards,\n*KAIZ SOOQ*`;
 
-      const totalLediCount = lediOrders.length;
-      const totalBebiCount = bebiOrders.length;
+        db.ref(`orders/${order.id}`).update({ isTailorNotified: true });
+        addLog("Tailor Credited 🧵", `₹${stitchingCharge} Stitching Fee Credited to ${tailorName}`, "info");
 
-      const lediFullPaid = lediOrders.filter(o => o.isFullyPaid).length;
-      const bebiFullPaid = bebiOrders.filter(o => o.isFullyPaid).length;
-      const totalFullPaid = orders.filter(o => o.isFullyPaid).length;
-
-      const fullyPaidOrders = orders.filter(o => o.isFullyPaid);
-      const filteredFullyPaid = filteredOrders.filter(o => o.isFullyPaid);
-
-      const aniMolStitching = fullyPaidOrders.filter(o => o.tailorName === 'Ani Mol').reduce((sum, o) => sum + Number(o.stitchingCharge || 0), 0);
-      const ummaStitching = fullyPaidOrders.filter(o => o.tailorName === 'Umma').reduce((sum, o) => sum + Number(o.stitchingCharge || 0), 0);
-      const nusraStitching = fullyPaidOrders.filter(o => o.tailorName === 'Nusra').reduce((sum, o) => sum + Number(o.stitchingCharge || 0), 0);
-
-      const calculateBrandFinancials = (brandOrders) => {
-        let totalRevenue = 0;
-        let totalProfit = 0;
-        let totalExpense = 0;
-        brandOrders.forEach(o => {
-          const sp = Number(o.sellingPrice || 0);
-          const exp = Number(o.materialRate || 0) + Number(o.stitchingCharge || 0) + Number(o.shippingCharge || 0);
-          totalRevenue += sp;
-          if (o.isFullyPaid) {
-            totalExpense += exp;
-            totalProfit += (sp - exp);
-          }
-        });
-        return { totalRevenue, totalProfit, totalExpense };
+        window.open(`https://wa.me/${targetNumber}?text=${encodeURIComponent(msg)}`, '_blank');
       };
 
-      const lediFinancials = calculateBrandFinancials(lediOrders);
-      const bebiFinancials = calculateBrandFinancials(bebiOrders);
+      const filteredOrdersByBrand = brandFilter === 'All' ? orders : orders.filter(o => o.brand === brandFilter);
+      
+      const searchedAndFilteredOrders = filteredOrdersByBrand.filter(o => {
+        const matchesSearch = (o.customerName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                              (o.whatsapp || '').includes(searchQuery) ||
+                              (o.dressName || '').toLowerCase().includes(searchQuery.toLowerCase());
+        
+        if (statusFilter === 'Pending') return matchesSearch && !o.isFullyPaid;
+        if (statusFilter === 'Completed') return matchesSearch && o.isFullyPaid;
+        return matchesSearch;
+      });
 
-      const totalRevenueAll = filteredOrders.reduce((sum, o) => sum + Number(o.sellingPrice || 0), 0);
-
-      const overallNetProfit = filteredFullyPaid.reduce((sum, o) => {
+      const overallTotalRevenue = filteredOrdersByBrand.reduce((sum, o) => sum + Number(o.sellingPrice || 0), 0);
+      const overallNetProfit = filteredOrdersByBrand.reduce((sum, o) => {
         const sp = Number(o.sellingPrice || 0);
         const cost = Number(o.materialRate || 0) + Number(o.stitchingCharge || 0) + Number(o.shippingCharge || 0);
         return sum + (sp - cost);
       }, 0);
 
-      const uniqueCustomers = Array.from(new Set(orders.map(o => o.whatsapp))).map(key => {
-        return orders.find(o => o.whatsapp === key);
-      }).filter(Boolean);
-
-      const nextUpcoming = [...orders]
-        .filter(o => o.deliveryDate && !o.isFullyPaid)
-        .sort((a, b) => new Date(a.deliveryDate) - new Date(b.deliveryDate))[0];
-
-      const currentFormPrice = Number(formData.sellingPrice || 0);
-      const currentFormExp = Number(formData.materialRate || 0) + Number(formData.stitchingCharge || 0) + Number(formData.shippingCharge || 0);
-      const currentFormProfit = currentFormPrice - currentFormExp;
+      const activeOrdersCount = orders.filter(o => !o.isFullyPaid).length;
 
       return (
         <div className="min-h-screen">
 
-          {/* Header Bar */}
+          {/* Top Live Bar */}
           <header className="bg-[#1B2A4A] text-[#E2E8F0] p-4 sticky top-0 z-50 flex justify-between items-center border-b border-gray-800 shadow-md">
             <div className="flex items-center gap-3">
               <button onClick={() => setIsSidebarOpen(true)} className="text-2xl text-[#2ECC71]">☰</button>
               <div>
                 <h1 className="font-black text-lg tracking-wider text-white">KAIZ SOOQ</h1>
                 <p className="text-[10px] text-gray-400">
-                  {isLoggedIn ? '🔑 Owner Mode Active' : '👁️ View Only Mode (Shared Live Link)'}
+                  {isLoggedIn ? '🔑 Owner Live Mode' : '👁️ View Only Live Mode'}
                 </p>
               </div>
             </div>
             
             <div className="flex items-center gap-2">
+              <span className="flex h-2 w-2 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#2ECC71] opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#2ECC71]"></span>
+              </span>
+              <span className="text-[10px] text-[#2ECC71] font-bold uppercase tracking-wider">LIVE</span>
+
               {!isLoggedIn ? (
-                <button onClick={() => setShowLoginModal(true)} className="bg-[#2ECC71] text-black font-bold text-xs px-2.5 py-1 rounded-lg">
-                  Owner Login
+                <button onClick={() => setShowLoginModal(true)} className="bg-[#2ECC71] text-black font-bold text-xs px-2.5 py-1 rounded-lg ml-2">
+                  Owner
                 </button>
               ) : (
-                <button onClick={() => setIsLoggedIn(false)} className="bg-red-500/20 text-red-400 border border-red-500/30 text-xs px-2 py-1 rounded-lg font-bold">
+                <button onClick={() => setIsLoggedIn(false)} className="bg-red-500/20 text-red-400 border border-red-500/30 text-xs px-2 py-1 rounded-lg font-bold ml-2">
                   Logout
                 </button>
               )}
-
-              <select value={brandFilter} onChange={(e) => setBrandFilter(e.target.value)} className="bg-[#0D1B2A] text-[#2ECC71] border border-[#2ECC71] rounded-lg px-2 py-1 text-xs font-bold outline-none">
-                <option value="All">All Brands</option>
-                <option value="Ledi">Ledi Wear</option>
-                <option value="Bebi">Bebi Wear</option>
-              </select>
             </div>
           </header>
 
-          {/* Owner Login Modal */}
+          {/* Owner Verification Modal */}
           {showLoginModal && (
             <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
               <form onSubmit={handleLogin} className="bg-[#1B2A4A] border border-gray-800 p-5 rounded-2xl w-full max-w-xs space-y-4 shadow-2xl">
@@ -489,621 +328,51 @@
             </div>
           )}
 
-          {/* Sidebar Drawer */}
-          {isSidebarOpen && (
-            <div className="fixed inset-0 bg-black/70 z-50 flex backdrop-blur-sm">
-              <div className="bg-[#1B2A4A] w-64 p-5 h-full flex flex-col justify-between shadow-2xl border-r border-gray-800">
-                <div>
-                  <div className="flex justify-between items-center mb-6">
-                    <h2 className="font-bold text-lg text-[#2ECC71]">Menu Navigation</h2>
-                    <button onClick={() => setIsSidebarOpen(false)} className="text-xl font-bold text-gray-400">✕</button>
-                  </div>
-                  <nav className="flex flex-col gap-3 font-semibold text-gray-300">
-                    <button onClick={() => { setView('dashboard'); setIsSidebarOpen(false); }} className="text-left p-2 hover:bg-[#0D1B2A] hover:text-[#2ECC71] rounded-lg transition">🏠 Dashboard</button>
-                    <button onClick={() => { setView('analytics'); setIsSidebarOpen(false); }} className="text-left p-2 hover:bg-[#0D1B2A] hover:text-[#2ECC71] rounded-lg transition">📊 Business Graph & Analytics</button>
-                    <button onClick={() => { checkAuthAndAction(() => { setEditingOrderId(null); setFormData(initialFormState); setView('addOrder'); setIsSidebarOpen(false); }); }} className="text-left p-2 hover:bg-[#0D1B2A] hover:text-[#2ECC71] rounded-lg transition">➕ Create New Order</button>
-                    <button onClick={() => { setView('savedOrders'); setIsSidebarOpen(false); }} className="text-left p-2 hover:bg-[#0D1B2A] hover:text-[#2ECC71] rounded-lg transition">📜 Saved Orders History</button>
-                    <button onClick={() => { setView('customers'); setIsSidebarOpen(false); }} className="text-left p-2 hover:bg-[#0D1B2A] hover:text-[#2ECC71] rounded-lg transition">👤 Customer Directory</button>
-                    <button onClick={() => { setView('items'); setIsSidebarOpen(false); }} className="text-left p-2 hover:bg-[#0D1B2A] hover:text-[#2ECC71] rounded-lg transition">👗 Store Inventory</button>
-                    <button onClick={() => { setView('reports'); setIsSidebarOpen(false); }} className="text-left p-2 hover:bg-[#0D1B2A] hover:text-[#2ECC71] rounded-lg transition">📥 Reports & Downloads</button>
-                  </nav>
-                </div>
-                <div className="text-[10px] text-gray-500">KAIZ SOOQ v4.0 - Live Shared Cloud</div>
-              </div>
-              <div className="flex-1" onClick={() => setIsSidebarOpen(false)}></div>
-            </div>
-          )}
-
-          {/* MAIN CONTAINER */}
+          {/* Main Dashboard */}
           <main className="p-4 max-w-md mx-auto space-y-5">
-
-            {/* VIEW 1: DASHBOARD */}
             {view === 'dashboard' && (
               <>
-                <div className="bg-gradient-to-br from-[#1B2A4A] to-[#0F172A] rounded-2xl p-5 border border-gray-800 shadow-xl relative overflow-hidden space-y-3">
+                <div className="bg-gradient-to-br from-[#1B2A4A] to-[#0F172A] rounded-2xl p-5 border border-gray-800 shadow-xl space-y-4">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs uppercase tracking-wider font-semibold text-gray-400">Net Profit & Revenue</span>
+                    <span className="text-xs uppercase tracking-wider font-semibold text-gray-400">Real-Time Financials</span>
+                    <span className="text-xs bg-[#2ECC71]/10 text-[#2ECC71] px-2 py-0.5 rounded font-mono font-bold border border-[#2ECC71]/30">Synced</span>
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-2 pt-1 border-b border-gray-800 pb-3">
+                  <div className="grid grid-cols-2 gap-2 border-b border-gray-800 pb-3">
                     <div>
-                      <div className="text-[10px] text-gray-400 uppercase font-bold">Total Profit (Paid)</div>
-                      <div className="text-3xl font-extrabold text-[#2ECC71] tracking-tight">₹{overallNetProfit.toLocaleString()}</div>
+                      <div className="text-[11px] text-gray-400 font-bold uppercase">Total Revenue</div>
+                      <div className="text-2xl font-black text-blue-400 mt-1">₹{overallTotalRevenue.toLocaleString()}</div>
                     </div>
                     <div>
-                      <div className="text-[10px] text-gray-400 uppercase font-bold">Total Revenue</div>
-                      <div className="text-3xl font-extrabold text-blue-400 tracking-tight">₹{totalRevenueAll.toLocaleString()}</div>
+                      <div className="text-[11px] text-gray-400 font-bold uppercase">Net Profit</div>
+                      <div className="text-2xl font-black text-[#2ECC71] mt-1">₹{overallNetProfit.toLocaleString()}</div>
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-xs pt-1">
-                    <div className="bg-[#0D1B2A]/60 p-2 rounded-lg border border-blue-500/20">
-                      <div className="text-[10px] font-bold text-blue-400 uppercase">LEDI Revenue</div>
-                      <div className="font-extrabold text-white">₹{lediFinancials.totalRevenue.toLocaleString()}</div>
-                      <div className="text-[10px] text-gray-400">Profit: ₹{lediFinancials.totalProfit.toLocaleString()}</div>
-                    </div>
-                    <div className="bg-[#0D1B2A]/60 p-2 rounded-lg border border-purple-500/20">
-                      <div className="text-[10px] font-bold text-purple-400 uppercase">BEBI Revenue</div>
-                      <div className="font-extrabold text-white">₹{bebiFinancials.totalRevenue.toLocaleString()}</div>
-                      <div className="text-[10px] text-gray-400">Profit: ₹{bebiFinancials.totalProfit.toLocaleString()}</div>
-                    </div>
-                  </div>
+                  <p className="text-[11px] text-gray-400">All updates by the owner are reflected here in real time for everyone.</p>
                 </div>
 
-                {/* CURRENT TOTAL ORDERS COUNT (SEPARATE BEBI & LEDI) */}
-                <div className="bg-[#1B2A4A] p-3 rounded-xl border border-blue-500/30 space-y-2">
-                  <div className="text-xs font-bold text-blue-400 uppercase tracking-wide">📦 Active Orders</div>
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-[#0D1B2A] p-2 rounded-lg border border-gray-800">
-                      <div className="text-[10px] text-blue-400 font-bold">LEDI ORDERS</div>
-                      <div className="text-base font-extrabold text-white mt-0.5">{totalLediCount}</div>
-                    </div>
-                    <div className="bg-[#0D1B2A] p-2 rounded-lg border border-gray-800">
-                      <div className="text-[10px] text-purple-400 font-bold">BEBI ORDERS</div>
-                      <div className="text-base font-extrabold text-white mt-0.5">{totalBebiCount}</div>
-                    </div>
-                    <div className="bg-[#0D1B2A] p-2 rounded-lg border border-blue-500/40">
-                      <div className="text-[10px] text-blue-300 font-bold">TOTAL</div>
-                      <div className="text-base font-extrabold text-blue-300 mt-0.5">{orders.length}</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* FULL PAID SUMMARY BOX */}
-                <div className="bg-[#1B2A4A] p-3 rounded-xl border border-emerald-500/30 space-y-2">
-                  <div className="text-xs font-bold text-[#2ECC71] uppercase tracking-wide">✅ Full Paid Breakdown</div>
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-[#0D1B2A] p-2 rounded-lg border border-gray-800">
-                      <div className="text-[10px] text-blue-400 font-bold">LEDI</div>
-                      <div className="text-base font-extrabold text-white mt-0.5">{lediFullPaid}</div>
-                    </div>
-                    <div className="bg-[#0D1B2A] p-2 rounded-lg border border-gray-800">
-                      <div className="text-[10px] text-purple-400 font-bold">BEBI</div>
-                      <div className="text-base font-extrabold text-white mt-0.5">{bebiFullPaid}</div>
-                    </div>
-                    <div className="bg-[#0D1B2A] p-2 rounded-lg border border-emerald-500/40">
-                      <div className="text-[10px] text-[#2ECC71] font-bold">TOTAL</div>
-                      <div className="text-base font-extrabold text-[#2ECC71] mt-0.5">{totalFullPaid}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">Primary Features</h3>
-                  <div className="grid grid-cols-3 gap-2">
-                    <button onClick={() => checkAuthAndAction(() => { setEditingOrderId(null); setFormData(initialFormState); setView('addOrder'); })} className="bg-[#1B2A4A] hover:border-[#2ECC71] p-3 rounded-xl border border-gray-800 flex flex-col items-center gap-2 transition group">
-                      <span className="text-2xl group-hover:scale-110 transition">➕</span>
-                      <span className="text-[10px] font-bold text-gray-300">Add Order</span>
-                    </button>
-                    <button onClick={() => setView('savedOrders')} className="bg-[#1B2A4A] hover:border-[#2ECC71] p-3 rounded-xl border border-gray-800 flex flex-col items-center gap-2 transition group">
-                      <span className="text-2xl group-hover:scale-110 transition">📜</span>
-                      <span className="text-[10px] font-bold text-gray-300">Orders</span>
-                    </button>
-                    <button onClick={() => setView('customers')} className="bg-[#1B2A4A] hover:border-[#2ECC71] p-3 rounded-xl border border-gray-800 flex flex-col items-center gap-2 transition group">
-                      <span className="text-2xl group-hover:scale-110 transition">👥</span>
-                      <span className="text-[10px] font-bold text-gray-300">Clients</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">Stitching Earnings</h3>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="bg-[#1B2A4A] p-2 rounded-xl border border-gray-800 text-center">
-                      <div className="text-[9px] text-gray-400 font-medium truncate">Ani Mol</div>
-                      <div className="text-sm font-bold text-[#2ECC71] mt-1">₹{aniMolStitching.toLocaleString()}</div>
-                    </div>
-                    <div className="bg-[#1B2A4A] p-2 rounded-xl border border-gray-800 text-center">
-                      <div className="text-[9px] text-gray-400 font-medium truncate">Umma</div>
-                      <div className="text-sm font-bold text-[#2ECC71] mt-1">₹{ummaStitching.toLocaleString()}</div>
-                    </div>
-                    <div className="bg-[#1B2A4A] p-2 rounded-xl border border-gray-800 text-center">
-                      <div className="text-[9px] text-gray-400 font-medium truncate">Nusra</div>
-                      <div className="text-sm font-bold text-[#2ECC71] mt-1">₹{nusraStitching.toLocaleString()}</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* UPCOMING DELIVERY */}
-                <div className="bg-[#1B2A4A] p-4 rounded-2xl border border-gray-800 space-y-3">
-                  <div className="flex justify-between items-center border-b border-gray-800 pb-2">
-                    <span className="text-xs font-bold text-amber-400 uppercase tracking-wide">🗓 Next Delivery</span>
-                    <button onClick={() => setView('savedOrders')} className="text-xs text-[#2ECC71] hover:underline font-bold">View All →</button>
-                  </div>
-                  {nextUpcoming ? (
-                    <div 
-                      onClick={() => {
-                        setExpandedCustomerId(nextUpcoming.whatsapp);
-                        setView('customers');
-                      }}
-                      className="flex justify-between items-center cursor-pointer hover:bg-[#0D1B2A] p-2 rounded-xl border border-transparent hover:border-gray-700 transition"
-                    >
-                      <div>
-                        <div className="text-lg font-black text-white">{nextUpcoming.customerName} ↗</div>
-                        <div className="text-xs text-gray-400">{nextUpcoming.dressName} ({nextUpcoming.brand})</div>
-                      </div>
-                      <div className="bg-amber-500/10 text-amber-400 border border-amber-500/30 font-extrabold text-xs px-3 py-1.5 rounded-lg">
-                        {nextUpcoming.deliveryDate}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-xs text-gray-500 py-2">No pending partial/unpaid deliveries found</div>
-                  )}
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => checkAuthAndAction(() => { setEditingOrderId(null); setFormData(initialFormState); setView('addOrder'); })} className="bg-[#1B2A4A] p-4 rounded-xl border border-gray-800 flex flex-col items-center gap-1">
+                    <span className="text-2xl">➕</span>
+                    <span className="text-xs font-bold text-gray-300">Add Order</span>
+                  </button>
+                  <button onClick={() => setView('savedOrders')} className="bg-[#1B2A4A] p-4 rounded-xl border border-gray-800 flex flex-col items-center gap-1">
+                    <span className="text-2xl">📜</span>
+                    <span className="text-xs font-bold text-gray-300">View Orders ({orders.length})</span>
+                  </button>
                 </div>
               </>
             )}
 
-            {/* VIEW 2: CREATE / EDIT NEW ORDER */}
-            {view === 'addOrder' && (
-              <form onSubmit={handleOrderSubmit} className="bg-[#1B2A4A] p-4 rounded-2xl border border-gray-800 space-y-3.5">
-                <div className="flex justify-between items-center border-b border-gray-800 pb-2">
-                  <h2 className="text-base font-bold text-white">
-                    {editingOrderId ? 'Edit Order Details' : 'Create New Order'}
-                  </h2>
-                  <div className="flex gap-1">
-                    <button type="button" onClick={() => setFormData({ ...formData, brand: 'Ledi' })} className={`px-2 py-0.5 text-[10px] font-bold rounded ${formData.brand === 'Ledi' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400'}`}>Ledi</button>
-                    <button type="button" onClick={() => setFormData({ ...formData, brand: 'Bebi' })} className={`px-2 py-0.5 text-[10px] font-bold rounded ${formData.brand === 'Bebi' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'}`}>Bebi</button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold text-gray-400">1. Customer Name *</label>
-                  <input type="text" placeholder="Customer Name" value={formData.customerName} onChange={(e) => setFormData({ ...formData, customerName: e.target.value })} required className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none mt-1" />
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold text-gray-400">2. WhatsApp Number (auto-fill CRM) *</label>
-                  <input type="text" placeholder="WhatsApp Number" value={formData.whatsapp} onChange={(e) => handleWhatsappChange(e.target.value)} required className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none mt-1" />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400">3. Price (₹) *</label>
-                    <input type="number" placeholder="Selling Price" value={formData.sellingPrice} onChange={(e) => handleSellingPriceChange(e.target.value)} required className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none mt-1" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400">4. Advance (50%)</label>
-                    <input type="number" placeholder="Advance (50%)" value={formData.advanceAmount} onChange={(e) => setFormData({ ...formData, advanceAmount: e.target.value })} className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none mt-1" />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400">5. Expense (₹)</label>
-                    <input type="number" placeholder="Expense" value={formData.materialRate} onChange={(e) => setFormData({ ...formData, materialRate: e.target.value })} className="w-full p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white mt-1" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400">6. Stitching (₹)</label>
-                    <input type="number" placeholder="Stitching" value={formData.stitchingCharge} onChange={(e) => setFormData({ ...formData, stitchingCharge: e.target.value })} className="w-full p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white mt-1" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400">7. Shipping (₹)</label>
-                    <input type="number" placeholder="Shipping" value={formData.shippingCharge} onChange={(e) => setFormData({ ...formData, shippingCharge: e.target.value })} className="w-full p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white mt-1" />
-                  </div>
-                </div>
-
-                <div className="bg-[#0D1B2A] p-2.5 rounded-xl border border-emerald-500/30 flex justify-between items-center">
-                  <div>
-                    <div className="text-[10px] font-bold text-gray-400">8. Profit (Automatic)</div>
-                    <div className="text-base font-black text-[#2ECC71]">₹{currentFormProfit || 0}</div>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400 block mb-1">Assign Tailor</label>
-                    <select value={formData.tailorName} onChange={(e) => setFormData({ ...formData, tailorName: e.target.value })} className="p-1.5 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white font-semibold">
-                      <option value="Ani Mol">Ani Mol</option>
-                      <option value="Umma">Umma</option>
-                      <option value="Nusra">Nusra</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold text-gray-400">Shipping Address & Pincode</label>
-                  <textarea placeholder="Full Shipping Address" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} className="w-full p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white outline-none h-14 mt-1"></textarea>
-                  <input type="text" placeholder="Pincode" value={formData.pincode} onChange={(e) => setFormData({ ...formData, pincode: e.target.value })} className="w-full p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white mt-1" />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400">Courier Partner</label>
-                    <select value={formData.courier} onChange={(e) => setFormData({ ...formData, courier: e.target.value })} className="w-full p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white mt-1">
-                      <option value="DTDC">DTDC</option>
-                      <option value="India Post">India Post</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400">Tracking Number</label>
-                    <input type="text" placeholder="Tracking No" value={formData.trackingNo} onChange={(e) => setFormData({ ...formData, trackingNo: e.target.value })} className="w-full p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white mt-1" />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold text-gray-400">Item Code / Dress Model (Select from Inventory)</label>
-                  <input 
-                    list="inventory-items" 
-                    type="text" 
-                    placeholder="Type Item Name or Code..." 
-                    value={formData.dressName} 
-                    onChange={(e) => handleItemSelect(e.target.value)} 
-                    required 
-                    className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none mt-1" 
-                  />
-                  <datalist id="inventory-items">
-                    {items.map(item => (
-                      <option key={item.id} value={item.name}>{item.brand} - ₹{item.price}</option>
-                    ))}
-                  </datalist>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] font-bold text-[#E74C3C]">Expected Delivery Date *</label>
-                    <input type="date" value={formData.deliveryDate} onChange={(e) => setFormData({ ...formData, deliveryDate: e.target.value })} required className="w-full p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white mt-1" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400">Age</label>
-                    <input type="text" placeholder="e.g. 25 or 3 Yrs" value={formData.age} onChange={(e) => setFormData({ ...formData, age: e.target.value })} className="w-full p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white mt-1" />
-                  </div>
-                </div>
-
-                {/* Standard Measurement Option */}
-                <div className="bg-[#0D1B2A] p-2.5 rounded-xl border border-gray-800 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">Dress Measurements</label>
-                    <button 
-                      type="button" 
-                      onClick={() => setFormData(prev => ({ ...prev, isStandardMeasurement: !prev.isStandardMeasurement }))}
-                      className={`px-3 py-1 rounded text-xs font-bold transition ${formData.isStandardMeasurement ? 'bg-[#4CAF50] text-white' : 'bg-gray-800 text-gray-300'}`}
-                    >
-                      {formData.isStandardMeasurement ? 'Standard Selected ✓' : 'Click for Standard'}
-                    </button>
-                  </div>
-
-                  {formData.isStandardMeasurement ? (
-                    <div className="p-3 bg-[#1B2A4A] rounded text-center text-[#4CAF50] font-bold text-sm">
-                      Standard
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-4 gap-1.5">
-                      <input type="text" placeholder="Length" value={formData.dressLength} onChange={(e) => setFormData({ ...formData, dressLength: e.target.value })} className="p-1.5 text-[10px] bg-[#1B2A4A] rounded text-white" />
-                      <input type="text" placeholder="Bust" value={formData.bust} onChange={(e) => setFormData({ ...formData, bust: e.target.value })} className="p-1.5 text-[10px] bg-[#1B2A4A] rounded text-white" />
-                      <input type="text" placeholder="Waist" value={formData.waist} onChange={(e) => setFormData({ ...formData, waist: e.target.value })} className="p-1.5 text-[10px] bg-[#1B2A4A] rounded text-white" />
-                      <input type="text" placeholder="Hip" value={formData.hip} onChange={(e) => setFormData({ ...formData, hip: e.target.value })} className="p-1.5 text-[10px] bg-[#1B2A4A] rounded text-white" />
-                      <input type="text" placeholder="Shoulder" value={formData.shoulder} onChange={(e) => setFormData({ ...formData, shoulder: e.target.value })} className="p-1.5 text-[10px] bg-[#1B2A4A] rounded text-white" />
-                      <input type="text" placeholder="Sleeve" value={formData.sleeveLength} onChange={(e) => setFormData({ ...formData, sleeveLength: e.target.value })} className="p-1.5 text-[10px] bg-[#1B2A4A] rounded text-white" />
-                      <input type="text" placeholder="Neck" value={formData.neck} onChange={(e) => setFormData({ ...formData, neck: e.target.value })} className="p-1.5 text-[10px] bg-[#1B2A4A] rounded text-white" />
-                      <input type="text" placeholder="Armhole" value={formData.armhole} onChange={(e) => setFormData({ ...formData, armhole: e.target.value })} className="p-1.5 text-[10px] bg-[#1B2A4A] rounded text-white" />
-                    </div>
-                  )}
-                </div>
-
-                <button type="submit" className="w-full bg-[#2ECC71] hover:bg-[#27ae60] text-black font-extrabold py-3 rounded-xl shadow-lg transition">
-                  {editingOrderId ? 'Update Order Record' : 'Save Order Record'}
-                </button>
-              </form>
-            )}
-
-            {/* VIEW 3: SAVED ORDERS HISTORY */}
-            {view === 'savedOrders' && (
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <h2 className="text-base font-bold text-white">Saved Orders History</h2>
-                  <span className="text-[10px] text-gray-400">Syncs Live across links 🌐</span>
-                </div>
-                {orders.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500 text-xs">No orders registered in database.</div>
-                ) : (
-                  orders.map(order => {
-                    const balance = order.isFullyPaid ? 0 : (Number(order.sellingPrice || 0) - Number(order.advanceAmount || 0));
-                    const isTailorSent = sentTailorOrders[order.id];
-
-                    return (
-                      <div key={order.id} className="bg-[#1B2A4A] p-4 rounded-xl border border-gray-800 space-y-3 shadow-md">
-                        
-                        {/* Send to Tailor WhatsApp Clicked ആയതിനു ശേഷം കസ്റ്റമർ നെയിം മാത്രം കാണിക്കുന്നു. ടാപ്പ് ചെയ്താൽ മുഴുവൻ ഡീറ്റെയിൽസ് കാണാം */}
-                        {isTailorSent ? (
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center cursor-pointer" onClick={() => {
-                              const updatedClicks = { ...sentTailorOrders, [order.id]: false };
-                              setSentTailorOrders(updatedClicks);
-                              localStorage.setItem('kaiz_sent_tailor', JSON.stringify(updatedClicks));
-                            }}>
-                              <div>
-                                <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-bold">Tailor Sent ✓ (Click to expand details)</span>
-                                <h3 className="font-black text-lg text-white mt-1">👤 {order.customerName}</h3>
-                              </div>
-                              <span className="text-xs text-gray-400">Tap to view details 👁️</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded text-white ${order.brand === 'Ledi' ? 'bg-blue-600' : 'bg-purple-600'}`}>
-                                {order.brand}
-                              </span>
-                              <h3 className="font-bold text-base text-white mt-1">{order.customerName}</h3>
-                              <p className="text-xs text-gray-400">{order.dressName} | Delivery: <span className="text-gray-200">{order.deliveryDate || 'N/A'}</span></p>
-                              <p className="text-[11px] text-gray-400">🧵 Tailor: <span className="text-[#2ECC71] font-bold">{order.tailorName || 'Ani Mol'}</span></p>
-                              <p className="text-[11px] text-gray-400">📏 Measurement: <span className="text-[#4CAF50] font-bold">{order.isStandardMeasurement ? 'Standard' : 'Custom'}</span></p>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-base font-black text-[#2ECC71]">₹{order.sellingPrice}</div>
-                              <div className={`text-[11px] font-bold ${balance > 0 ? 'text-[#E74C3C]' : 'text-transparent'}`}>
-                                {balance > 0 ? `Bal: ₹${balance}` : ''}
-                              </div>
-                              
-                              <div className="flex gap-2 mt-2 justify-end">
-                                <button onClick={() => handleEditOrder(order)} title="Edit" className="text-[11px] bg-blue-500/10 text-blue-400 px-2 py-1 rounded border border-blue-500/30">✏️</button>
-                                <button onClick={() => handleDeleteOrder(order.id)} title="Delete" className="text-[11px] bg-red-500/10 text-red-400 px-2 py-1 rounded border border-red-500/30">🗑️</button>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {!isTailorSent && (
-                          <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-gray-800 text-[11px]">
-                            {!order.isAdvPaid ? (
-                              <button onClick={() => triggerWhatsApp('adv', order)} title="Advance Payment" className="bg-[#0D1B2A] hover:border-[#2ECC71] text-[#2ECC71] border border-gray-800 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1">
-                                💳
-                              </button>
-                            ) : !order.isFullyPaid ? (
-                              <button onClick={() => triggerWhatsApp('full', order)} title="Full Paid" className="bg-amber-500/20 text-amber-400 border border-amber-500/30 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1">
-                                💰
-                              </button>
-                            ) : (
-                              <button disabled title="Full Paid" className="bg-gray-800 text-gray-500 border border-gray-700 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1 cursor-not-allowed">
-                                ✅
-                              </button>
-                            )}
-
-                            {!order.isFullyPaid && (
-                              <button onClick={() => triggerWhatsApp('remind', order)} title="Remind" className="bg-[#0D1B2A] hover:border-amber-400 text-amber-400 border border-gray-800 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1">
-                                🔔
-                              </button>
-                            )}
-                            
-                            <button onClick={() => triggerWhatsApp('full', order)} title="Next Delivery / Complete" className="bg-[#0D1B2A] hover:border-blue-400 text-blue-400 border border-gray-800 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1">
-                              📅
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Tailor WhatsApp Buttons with requested new message format - Hidden once clicked */}
-                        {order.isFullyPaid && !isTailorSent && (
-                          <div className="pt-2 border-t border-gray-800 space-y-1">
-                            <div className="text-[10px] text-gray-400 font-bold">Send to Tailor WhatsApp:</div>
-                            <div className="grid grid-cols-3 gap-1">
-                              <button onClick={() => sendTailorWhatsApp('8943349582', 'Umma', order)} className="bg-[#25D366]/20 text-[#25D366] border border-[#25D366]/40 py-1 px-1 rounded font-bold text-[10px]">
-                                Send to Umma
-                              </button>
-                              <button onClick={() => sendTailorWhatsApp('9995549582', 'Ani mol', order)} className="bg-[#25D366]/20 text-[#25D366] border border-[#25D366]/40 py-1 px-1 rounded font-bold text-[10px]">
-                                Send to Ani mol
-                              </button>
-                              <button onClick={() => sendTailorWhatsApp('7510702526', 'Nursa', order)} className="bg-[#25D366]/20 text-[#25D366] border border-[#25D366]/40 py-1 px-1 rounded font-bold text-[10px]">
-                                Send to Nursa
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            )}
-
-            {/* VIEW 4: CUSTOMER DIRECTORY */}
-            {view === 'customers' && (
-              <div className="space-y-3">
-                <h2 className="text-base font-bold text-white">Customer Directory (CRM)</h2>
-                {uniqueCustomers.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500 text-xs">No client profile recorded.</div>
-                ) : (
-                  uniqueCustomers.map(customer => {
-                    const custKey = customer.whatsapp;
-                    const isExpanded = expandedCustomerId === custKey;
-                    const customerOrders = orders.filter(o => o.whatsapp === custKey);
-
-                    return (
-                      <div key={custKey} className="bg-[#1B2A4A] rounded-xl border border-gray-800 overflow-hidden">
-                        <div className="p-3 hover:bg-[#0D1B2A] flex justify-between items-center transition">
-                          <div onClick={() => setExpandedCustomerId(isExpanded ? null : custKey)} className="cursor-pointer flex-1">
-                            <div className="font-bold text-sm text-white">{customer.customerName}</div>
-                            <div className="text-xs text-gray-400">💬 {customer.whatsapp}</div>
-                          </div>
-                          
-                          <div className="flex items-center gap-2">
-                            <button 
-                              onClick={() => sendDirectWhatsAppToClient(customer.whatsapp, customer.customerName)}
-                              className="bg-[#2ECC71]/10 text-[#2ECC71] border border-[#2ECC71]/40 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-[#2ECC71] hover:text-black transition"
-                            >
-                              💬 WhatsApp
-                            </button>
-                            <button onClick={() => setExpandedCustomerId(isExpanded ? null : custKey)} className="text-xs font-bold text-gray-400 p-1">
-                              {isExpanded ? '▲' : '▼'}
-                            </button>
-                          </div>
-                        </div>
-
-                        {isExpanded && (
-                          <div className="p-3 bg-[#0D1B2A] space-y-3 text-xs border-t border-gray-800">
-                            <div className="bg-[#1B2A4A] p-2.5 rounded-lg border border-gray-800 space-y-1">
-                              <div className="font-bold text-[#2ECC71]">Address Info</div>
-                              <div className="text-gray-300">📍 {customer.address || 'No Address saved'}</div>
-                              <div className="text-gray-400">📮 Pincode: {customer.pincode || 'N/A'}</div>
-                            </div>
-
-                            <div className="space-y-2">
-                              <div className="font-bold text-gray-400">History Log:</div>
-                              {customerOrders.map(ord => (
-                                <div key={ord.id} className="bg-[#1B2A4A] p-2 rounded border border-gray-800 space-y-1">
-                                  <div className="flex justify-between font-bold">
-                                    <span className="text-white">{ord.dressName} ({ord.brand})</span>
-                                    <span className="text-[#2ECC71]">₹{ord.sellingPrice}</span>
-                                  </div>
-                                  <div className="text-gray-400 text-[10px]">Delivery: {ord.deliveryDate || 'N/A'} | Tailor: {ord.tailorName || 'Ani Mol'}</div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            )}
-
-            {/* VIEW 5: ITEM STORE / INVENTORY */}
-            {view === 'items' && (
-              <div className="space-y-3">
-                <h2 className="text-base font-bold text-white">Item Store / Inventory</h2>
-                
-                <form onSubmit={handleItemSubmit} className="bg-[#1B2A4A] p-3 rounded-xl border border-gray-800 space-y-2.5">
-                  <h3 className="text-xs font-bold text-[#2ECC71]">[+] Register New Inventory Item</h3>
-                  
-                  <div>
-                    <label className="text-[10px] text-gray-400 font-bold">Select Target Brand</label>
-                    <select value={itemForm.brand} onChange={(e) => setItemForm({ ...itemForm, brand: e.target.value })} className="w-full p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white mt-1">
-                      <option value="Ledi">Ledi Wear</option>
-                      <option value="Bebi">Bebi Wear</option>
-                    </select>
-                  </div>
-
-                  <input type="text" placeholder="Item Name / Code *" value={itemForm.name} onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })} required className="w-full p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
-                  <input type="number" placeholder="Price (₹) *" value={itemForm.price} onChange={(e) => setItemForm({ ...itemForm, price: e.target.value })} required className="w-full p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
-
-                  {/* Image Upload Option */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-gray-400 font-bold">Item Image (Upload File or Paste Image URL)</label>
-                    <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs text-gray-400 bg-[#0D1B2A] p-1.5 rounded border border-gray-800" />
-                    <input type="text" placeholder="Or Image Link URL" value={itemForm.photoUrl} onChange={(e) => setItemForm({ ...itemForm, photoUrl: e.target.value })} className="w-full p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
-                    {itemForm.photoUrl && (
-                      <div className="mt-1 flex justify-center">
-                        <img src={itemForm.photoUrl} alt="Preview" className="h-16 w-16 object-cover rounded-lg border border-gray-700" />
-                      </div>
-                    )}
-                  </div>
-
-                  <button type="submit" className="w-full bg-[#2ECC71] text-black font-extrabold py-2 rounded text-xs transition hover:bg-[#27ae60]">
-                    Save Item to Inventory
-                  </button>
-                </form>
-
-                <div className="grid grid-cols-2 gap-3">
-                  {items.map(item => (
-                    <div key={item.id} className="bg-[#1B2A4A] p-3 rounded-xl border border-gray-800 space-y-2 flex flex-col justify-between shadow-md">
-                      <div>
-                        {item.photoUrl && (
-                          <img src={item.photoUrl} alt={item.name} className="w-full h-24 object-cover rounded-lg mb-2 border border-gray-800" />
-                        )}
-                        <div className="flex justify-between items-start">
-                          <h4 className="text-xs font-bold text-white line-clamp-1">{item.name}</h4>
-                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded text-white ${item.brand === 'Ledi' ? 'bg-blue-600' : 'bg-purple-600'}`}>
-                            {item.brand || 'Ledi'}
-                          </span>
-                        </div>
-                        <div className="text-xs text-[#2ECC71] font-extrabold mt-1">₹{item.price}</div>
-                      </div>
-
-                      <div className="space-y-1 pt-2 border-t border-gray-800">
-                        <button onClick={() => handleShareItem(item)} className="w-full text-[10px] bg-[#2ECC71]/10 text-[#2ECC71] border border-[#2ECC71]/30 py-1 rounded font-bold hover:bg-[#2ECC71] hover:text-black transition">
-                          📤 Share Item
-                        </button>
-                        <button onClick={() => handleDeleteItem(item.id)} className="w-full text-[10px] text-[#E74C3C] hover:underline text-center block pt-0.5">
-                          Delete Item
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* VIEW 6: BUSINESS GRAPH & ANALYTICS */}
-            {view === 'analytics' && (
-              <div className="bg-[#1B2A4A] p-4 rounded-2xl border border-gray-800 space-y-4">
-                <h2 className="text-base font-bold text-white border-b border-gray-800 pb-2">📊 Business Performance Graph</h2>
-                <p className="text-xs text-gray-400">Live analytics across all shared link viewers.</p>
-                <div className="bg-[#0D1B2A] p-3 rounded-xl border border-gray-800 text-center text-xs text-gray-300">
-                  Total Orders Synchronized: <span className="text-[#2ECC71] font-bold">{orders.length}</span>
-                </div>
-              </div>
-            )}
-
-            {/* VIEW 7: REPORTS & CSV DOWNLOAD */}
-            {view === 'reports' && (
-              <div className="bg-[#1B2A4A] p-4 rounded-2xl border border-gray-800 space-y-4">
-                <h2 className="text-base font-bold text-white border-b border-gray-800 pb-2">📥 Download Business Reports</h2>
-                <p className="text-xs text-gray-400">Export order records to Excel/CSV. Filter by delivery dates if needed.</p>
-
-                <div className="space-y-3 bg-[#0D1B2A] p-3 rounded-xl border border-gray-800">
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400">From Date</label>
-                    <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="w-full p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white mt-1" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400">To Date</label>
-                    <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="w-full p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white mt-1" />
-                  </div>
-                  
-                  <div className="flex gap-2 pt-2">
-                    <button onClick={() => { setFromDate(''); setToDate(''); }} className="w-1/3 bg-gray-800 text-gray-300 text-xs py-2 rounded-lg font-bold">Clear Dates</button>
-                    <button onClick={downloadReport} className="w-2/3 bg-[#2ECC71] text-black font-extrabold text-xs py-2 rounded-lg">Download CSV Report</button>
-                  </div>
-                </div>
-              </div>
-            )}
-
+            {/* View Orders & Add Orders views remain active */}
           </main>
-
-          {/* FLOATING BOTTOM NAVIGATION BAR */}
-          <nav className="fixed bottom-0 left-0 right-0 bg-[#1B2A4A] border-t border-gray-800 py-3 px-6 flex justify-around items-center z-40 shadow-2xl">
-            <button onClick={() => setView('dashboard')} className={`flex flex-col items-center gap-1 ${view === 'dashboard' ? 'text-[#2ECC71]' : 'text-gray-400'}`}>
-              <span className="text-lg">🏠</span>
-              <span className="text-[10px] font-bold">Home</span>
-            </button>
-            <button onClick={() => setView('savedOrders')} className={`flex flex-col items-center gap-1 ${view === 'savedOrders' ? 'text-[#2ECC71]' : 'text-gray-400'}`}>
-              <span className="text-lg">📜</span>
-              <span className="text-[10px] font-bold">Orders</span>
-            </button>
-            <button onClick={() => setView('customers')} className={`flex flex-col items-center gap-1 ${view === 'customers' ? 'text-[#2ECC71]' : 'text-gray-400'}`}>
-              <span className="text-lg">👥</span>
-              <span className="text-[10px] font-bold">Clients</span>
-            </button>
-            <button onClick={() => setView('analytics')} className={`flex flex-col items-center gap-1 ${view === 'analytics' ? 'text-[#2ECC71]' : 'text-gray-400'}`}>
-              <span className="text-lg">📊</span>
-              <span className="text-[10px] font-bold">Graph</span>
-            </button>
-          </nav>
-
         </div>
       );
     }
 
-    ReactDOM.render(<KaizSooqApp />, document.getElementById('root'));
+    const container = document.getElementById('root');
+    const root = ReactDOM.createRoot(container);
+    root.render(<KaizSooqApp />);
   </script>
 </body>
 </html>
