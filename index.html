@@ -54,7 +54,6 @@
       const initialFormState = {
         brand: 'Ledi',
         customerName: '',
-        phone: '',
         whatsapp: '',
         address: '',
         pincode: '',
@@ -102,14 +101,13 @@
         localStorage.setItem('kaiz_orders', JSON.stringify(updatedOrders));
       };
 
-      const handlePhoneChange = (phoneNum) => {
-        setFormData(prev => ({ ...prev, phone: phoneNum }));
-        const existingOrder = orders.find(o => o.phone === phoneNum);
+      const handleWhatsappChange = (waNum) => {
+        setFormData(prev => ({ ...prev, whatsapp: waNum }));
+        const existingOrder = orders.find(o => o.whatsapp === waNum);
         if (existingOrder && !editingOrderId) {
           setFormData(prev => ({
             ...prev,
             customerName: existingOrder.customerName,
-            whatsapp: existingOrder.whatsapp,
             address: existingOrder.address,
             pincode: existingOrder.pincode
           }));
@@ -165,30 +163,44 @@
         });
       };
 
-      // WhatsApp Trigger Functions
+      // AUTOMATED CUSTOMER WHATSAPP TRIGGER FUNCTIONS
       const triggerWhatsApp = (type, order) => {
+        const rawTargetPhone = order.whatsapp || '';
+        
+        if (!rawTargetPhone) {
+          alert('WhatsApp number not found for this order!');
+          return;
+        }
+
+        // Clean WhatsApp Number formatting
+        let cleanPhone = rawTargetPhone.replace(/[^0-9]/g, '');
+        if (cleanPhone.length === 10) {
+          cleanPhone = '91' + cleanPhone;
+        }
+
         const balance = order.isFullyPaid ? 0 : (Number(order.sellingPrice || 0) - Number(order.advanceAmount || 0));
-        const brandHeader = order.brand;
+        const brandHeader = order.brand === 'Bebi' ? 'BEBI WEAR' : 'LEDI WEAR';
         let msg = '';
 
         if (type === 'adv') {
-          msg = `*${brandHeader} Order Confirmed!*\nHello ${order.customerName},\nYour order for *${order.dressName}* is confirmed.\n\n👗 *Dress Price:* ₹${order.sellingPrice || 0}\n💳 *Advance Paid:* ₹${order.advanceAmount || 0}\n💵 *Remaining Balance:* ₹${balance}\n📅 *Expected Delivery:* ${order.deliveryDate}`;
+          msg = `*${brandHeader} - Order Confirmed! 🎉*\n\nHello *${order.customerName}*,\nYour order for *${order.dressName}* has been confirmed.\n\n👗 *Dress Price:* ₹${order.sellingPrice || 0}\n💳 *Advance Paid:* ₹${order.advanceAmount || 0}\n💵 *Remaining Balance:* ₹${balance}\n📅 *Expected Delivery:* ${order.deliveryDate}`;
+          
           const updated = orders.map(o => o.id === order.id ? { ...o, isAdvPaid: true } : o);
           saveOrdersToStorage(updated);
 
         } else if (type === 'remind') {
-          msg = `*${brandHeader} Payment Reminder*\nHello ${order.customerName},\nThis is a reminder for your order: *${order.dressName}*\n\n👗 *Dress Price:* ₹${order.sellingPrice || 0}\n💳 *Advance Paid:* ₹${order.advanceAmount || 0}\n💵 *Pending Balance:* ₹${balance}\n\nPlease pay the remaining balance via GPay/PhonePe to:\n*Muhammedanas3010-1@oksbi*`;
+          msg = `*${brandHeader} - Payment Reminder 🔔*\n\nHello *${order.customerName}*,\nThis is a friendly reminder regarding your order for *${order.dressName}*.\n\n👗 *Total Price:* ₹${order.sellingPrice || 0}\n💳 *Advance Paid:* ₹${order.advanceAmount || 0}\n💵 *Pending Balance:* ₹${balance}\n\nPlease pay the remaining balance via GPay/PhonePe to:\n👉 *Muhammedanas3010-1@oksbi*`;
         
         } else if (type === 'full') {
-          msg = `*${brandHeader} Payment Confirmation*\n\nHello ${order.customerName},\nThank you for making the full payment for your dress *${order.dressName}*.\n\n👗 *Total Amount:* ₹${order.sellingPrice || 0}\n✅ *Status:* Fully Paid\n🚚 *Transit Update:* Your dress is currently in transit and will reach you shortly!\n\nThank you for shopping with us!`;
+          msg = `*${brandHeader} - Payment Received! ✅*\n\nHello *${order.customerName}*,\nThank you! We have received full payment for your dress *${order.dressName}*.\n\n👗 *Total Amount:* ₹${order.sellingPrice || 0}\n✅ *Status:* Fully Paid\n🚚 *Transit Update:* Your dress is currently in transit and will reach you shortly!\n\nThank you for shopping with us!`;
+          
           const updated = orders.map(o => o.id === order.id ? { ...o, isFullyPaid: true, advanceAmount: order.sellingPrice } : o);
           saveOrdersToStorage(updated);
         }
 
-        msg += order.brand === 'Bebi' ? `\n\n*KAIZ SOOQ - be every baby’s ideal*` : `\n\n*KAIZ SOOQ*`;
+        msg += order.brand === 'Bebi' ? `\n\n*KAIZ SOOQ - Be Every Baby’s Ideal*` : `\n\n*KAIZ SOOQ*`;
 
-        const targetPhone = order.whatsapp || order.phone;
-        window.open(`https://wa.me/91${targetPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+        window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
       };
 
       // TAILOR WHATSAPP MESSAGE FUNCTION
@@ -196,17 +208,14 @@
         const tailorName = order.tailorName || 'Ani Mol';
         const stitchingCharge = order.stitchingCharge || 0;
         
-        // GET NUMBER FROM HIDDEN DICTIONARY BASED ON SELECTED TAILOR
         const targetNumber = TAILOR_NUMBERS[tailorName] || TAILOR_NUMBERS['Ani Mol'];
         
         const msg = `Hello ${tailorName},\n\nThank you so much for your excellent work on *${order.dressName}*! The stitching was outstanding and awesome.\n\nYour stitching charge of *₹${stitchingCharge}* has been credited to your account.\n\nBest regards,\n*KAIZ SOOQ*`;
 
-        // Update Tailor Notified status
         const updated = orders.map(o => o.id === order.id ? { ...o, isTailorNotified: true } : o);
         saveOrdersToStorage(updated);
         setSelectedOrderDetails(prev => prev ? { ...prev, isTailorNotified: true } : null);
 
-        // Directly open WhatsApp with selected tailor's number
         window.open(`https://wa.me/${targetNumber}?text=${encodeURIComponent(msg)}`, '_blank');
       };
 
@@ -223,11 +232,11 @@
         }
 
         let csvContent = "data:text/csv;charset=utf-8,";
-        csvContent += "Brand,Customer Name,Phone,Dress Name,Selling Price,Advance,Balance,Fully Paid,Delivery Date,Tailor\n";
+        csvContent += "Brand,Customer Name,WhatsApp,Dress Name,Selling Price,Advance,Balance,Fully Paid,Delivery Date,Tailor\n";
 
         reportData.forEach(o => {
           const bal = o.isFullyPaid ? 0 : (Number(o.sellingPrice || 0) - Number(o.advanceAmount || 0));
-          csvContent += `"${o.brand}","${o.customerName}","${o.phone}","${o.dressName}",${o.sellingPrice},${o.advanceAmount},${bal},"${o.isFullyPaid ? 'YES' : 'NO'}","${o.deliveryDate}","${o.tailorName}"\n`;
+          csvContent += `"${o.brand}","${o.customerName}","${o.whatsapp}",${o.dressName}",${o.sellingPrice},${o.advanceAmount},${bal},"${o.isFullyPaid ? 'YES' : 'NO'}","${o.deliveryDate}","${o.tailorName}"\n`;
         });
 
         const encodedUri = encodeURI(csvContent);
@@ -243,7 +252,7 @@
       
       const searchedAndFilteredOrders = filteredOrdersByBrand.filter(o => {
         const matchesSearch = (o.customerName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                              (o.phone || '').includes(searchQuery) ||
+                              (o.whatsapp || '').includes(searchQuery) ||
                               (o.dressName || '').toLowerCase().includes(searchQuery.toLowerCase());
         
         if (statusFilter === 'Pending') return matchesSearch && !o.isFullyPaid;
@@ -510,9 +519,8 @@
                 </div>
 
                 <div className="space-y-2">
-                  <input type="text" placeholder="Phone Number" value={formData.phone} onChange={(e) => handlePhoneChange(e.target.value)} required className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none" />
                   <input type="text" placeholder="Customer Name" value={formData.customerName} onChange={(e) => setFormData({ ...formData, customerName: e.target.value })} required className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none" />
-                  <input type="text" placeholder="WhatsApp Number" value={formData.whatsapp} onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })} className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none" />
+                  <input type="text" placeholder="WhatsApp Number (e.g. 9876543210)" value={formData.whatsapp} onChange={(e) => handleWhatsappChange(e.target.value)} required className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none" />
                   <textarea placeholder="Shipping Address" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none h-16"></textarea>
                   <input type="text" placeholder="Pincode" value={formData.pincode} onChange={(e) => setFormData({ ...formData, pincode: e.target.value })} className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none" />
                 </div>
@@ -587,7 +595,7 @@
                 <div className="bg-[#1B2A4A] p-3 rounded-xl border border-gray-800 space-y-2">
                   <input 
                     type="text" 
-                    placeholder="🔍 Search Customer, Phone, or Dress..." 
+                    placeholder="🔍 Search Customer, WhatsApp, or Dress..." 
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none"
@@ -632,6 +640,7 @@
                               </span>
                               <h3 className="font-bold text-base text-white">{order.customerName}</h3>
                             </div>
+                            <p className="text-[10px] text-gray-400 mt-0.5">📱 {order.whatsapp}</p>
                           </div>
                           <div className="text-right flex items-center gap-2">
                             <div className="text-base font-black text-[#2ECC71]">₹{order.sellingPrice}</div>
@@ -639,7 +648,7 @@
                               onClick={() => setSelectedOrderDetails(order)} 
                               className="text-xs bg-[#2ECC71]/10 text-[#2ECC71] border border-[#2ECC71]/30 px-2.5 py-1.5 rounded-lg font-bold hover:bg-[#2ECC71] hover:text-black transition"
                             >
-                              👁️ View Details
+                              👁️ View
                             </button>
                           </div>
                         </div>
@@ -655,6 +664,7 @@
                               {order.brand}
                             </span>
                             <h3 className="font-bold text-base text-white mt-1">{order.customerName}</h3>
+                            <p className="text-xs text-gray-300">📱 WA: {order.whatsapp}</p>
                             <p className="text-xs text-gray-400">{order.dressName} | Delivery: <span className="text-gray-200">{order.deliveryDate}</span></p>
                             <p className="text-[11px] text-gray-400">🧵 Tailor: <span className="text-[#2ECC71] font-bold">{order.tailorName || 'Ani Mol'}</span></p>
                           </div>
@@ -671,18 +681,19 @@
                           </div>
                         </div>
 
+                        {/* AUTOMATED WHATSAPP ACTION BUTTONS */}
                         <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-800 text-sm">
                           {!order.isAdvPaid ? (
-                            <button title="Advance Paid Notification" onClick={() => triggerWhatsApp('adv', order)} className="bg-[#0D1B2A] hover:border-[#2ECC71] text-[#2ECC71] border border-gray-800 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1 text-xs">
+                            <button title="Send Advance Confirmation" onClick={() => triggerWhatsApp('adv', order)} className="bg-[#0D1B2A] hover:border-[#2ECC71] text-[#2ECC71] border border-gray-800 py-2 px-1 rounded-lg font-bold flex items-center justify-center gap-1 text-xs transition">
                               💳 Send Adv Info
                             </button>
                           ) : (
-                            <button title="Mark Full Paid" onClick={() => triggerWhatsApp('full', order)} className="bg-amber-500/20 text-amber-400 border border-amber-500/30 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1 text-xs">
+                            <button title="Send Full Payment Confirmation" onClick={() => triggerWhatsApp('full', order)} className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/30 py-2 px-1 rounded-lg font-bold flex items-center justify-center gap-1 text-xs transition">
                               💰 Mark Completed
                             </button>
                           )}
 
-                          <button title="Send Reminder" onClick={() => triggerWhatsApp('remind', order)} className="bg-[#0D1B2A] hover:border-amber-400 text-amber-400 border border-gray-800 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1 text-xs">
+                          <button title="Send Payment Reminder" onClick={() => triggerWhatsApp('remind', order)} className="bg-[#0D1B2A] hover:border-amber-400 text-amber-400 border border-gray-800 py-2 px-1 rounded-lg font-bold flex items-center justify-center gap-1 text-xs transition">
                             🔔 Reminder
                           </button>
                         </div>
@@ -715,8 +726,8 @@
                           <span className="font-bold text-white">{selectedOrderDetails.brand}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-400">Phone:</span>
-                          <span className="font-bold text-white">{selectedOrderDetails.phone}</span>
+                          <span className="text-gray-400">WhatsApp:</span>
+                          <span className="font-bold text-white">{selectedOrderDetails.whatsapp}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-400">Address:</span>
@@ -740,7 +751,7 @@
                         </div>
                       </div>
 
-                      {/* TAILOR MESSAGE BUTTON (SHOWS ONLY IF NOT NOTIFIED YET) */}
+                      {/* TAILOR MESSAGE BUTTON */}
                       {!selectedOrderDetails.isTailorNotified && (
                         <button 
                           onClick={() => triggerTailorWhatsApp(selectedOrderDetails)} 
