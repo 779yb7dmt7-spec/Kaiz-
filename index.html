@@ -372,12 +372,11 @@
       const ummaStitching = orders.filter(o => o.tailorName === 'Umma').reduce((sum, o) => sum + Number(o.stitchingCharge || 0), 0);
       const nusrathStitching = orders.filter(o => o.tailorName === 'Nusrath').reduce((sum, o) => sum + Number(o.stitchingCharge || 0), 0);
 
-      // Complete ചെയ്ത ഓർഡറുകളിൽ നിന്നും മാത്രം ലാഭം കണക്കാക്കുന്നു
       const calculateBrandFinancials = (brandOrders) => {
         let totalProfit = 0;
         let totalExpense = 0;
         let totalRevenue = 0;
-        brandOrders.filter(o => o.isFullyPaid).forEach(o => {
+        brandOrders.forEach(o => {
           const sp = Number(o.sellingPrice || 0);
           const exp = Number(o.materialRate || 0) + Number(o.stitchingCharge || 0) + Number(o.shippingCharge || 0);
           totalRevenue += sp;
@@ -391,15 +390,11 @@
       const bebiFinancials = calculateBrandFinancials(bebiOrders);
 
       const overallTotalRevenue = filteredOrdersByBrand.reduce((sum, o) => sum + Number(o.sellingPrice || 0), 0);
-      
-      // Net Profit & Anu Profit - Complete (isFullyPaid) ആയ ഓർഡറുകൾ മാത്രം കൂട്ടുന്നു
-      const overallNetProfit = filteredOrdersByBrand
-        .filter(o => o.isFullyPaid)
-        .reduce((sum, o) => {
-          const sp = Number(o.sellingPrice || 0);
-          const cost = Number(o.materialRate || 0) + Number(o.stitchingCharge || 0) + Number(o.shippingCharge || 0);
-          return sum + (sp - cost);
-        }, 0);
+      const overallNetProfit = filteredOrdersByBrand.reduce((sum, o) => {
+        const sp = Number(o.sellingPrice || 0);
+        const cost = Number(o.materialRate || 0) + Number(o.stitchingCharge || 0) + Number(o.shippingCharge || 0);
+        return sum + (sp - cost);
+      }, 0);
 
       const currentFormProfit = (Number(formData.sellingPrice) || 0) - (
         (Number(formData.materialRate) || 0) + 
@@ -507,7 +502,7 @@
                     </div>
                   </div>
 
-                  <p className="text-[11px] text-gray-400">Real-time cloud database revenue and profit tracking across all completed orders.</p>
+                  <p className="text-[11px] text-gray-400">Real-time cloud database revenue and profit tracking across all orders.</p>
                 </div>
 
                 <div className="bg-[#1B2A4A] p-3.5 rounded-xl border border-emerald-500/30 space-y-3 shadow-lg">
